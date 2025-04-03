@@ -22,7 +22,7 @@ int main(void)
 	syslog(LOG_INFO, "Waiting on semaphore...");
 	sem_wait(sem);
 	
-	printf("Semaphore Signal received! Exitting..\n");
+	printf("Semaphore Signal received! Exiting..\n");
 	sem_close(sem);
 	sem_unlink(SEMAPHORE);
 	closelog();
