@@ -19,9 +19,7 @@
 #include <ctime>
 #include <unistd.h>
 #include <iostream>
-#include <mutex>
-#include <queue>
-#include <limits>
+#include <syslog.h>
 // The service class contains the service function and service parameters
 // (priority, affinity, etc). It spawns a thread to run the service, configures
 // the thread as required, and executes the service whenever it gets released.
@@ -59,32 +57,8 @@ public:
 
     }
  
-
-	void printStatistics() const {
-	std::cout << "Service (Period: " << _period << " ms) Statistics:\n";
-	if (_startJitterCount > 0) {
-	    std::cout << "  Start Time Jitter (us): "
-	              << "min = " << _minStartJitter << ", "
-	              << "max = " << _maxStartJitter << ", "
-	              << "avg = " << (_totalStartJitter / _startJitterCount) << "\n";
-	}
-	if (_execTimeCount > 0) {
-	    std::cout << "  Execution Time (us): "
-	              << "min = " << _minExecTime << ", "
-	              << "max = " << _maxExecTime << ", "
-	              << "avg = " << (_totalExecTime / _execTimeCount) << "\n";
-	}
-	}
-
-	void release(){
+    void release(){
         // todo: release the service using the semaphore
-        
-        struct timespec releaseTime;
-    	clock_gettime(CLOCK_REALTIME, &releaseTime);
-    	{
-            std::lock_guard<std::mutex> lock(_timestampMutex);
-            _releaseTimes.push(releaseTime);
-    	}
         sem_post(&_sem);
     }
     
@@ -109,72 +83,14 @@ private:
     uint8_t _priority;
     uint32_t _period;
     
-
-    double _minStartJitter = std::numeric_limits<double>::max();
-    double _maxStartJitter = 0;
-    double _totalStartJitter = 0;
-    size_t _startJitterCount = 0;
-    double _minExecTime = std::numeric_limits<double>::max();
-    double _maxExecTime = 0;
-    double _totalExecTime = 0;
-    size_t _execTimeCount = 0;
-
-    std::mutex _timestampMutex;
-    std::queue<struct timespec> _releaseTimes;
-
-
-
-    static inline double diffTimeUs(const struct timespec &start, const struct timespec &end) {
-        return (end.tv_sec - start.tv_sec) * 1e6 + (end.tv_nsec - start.tv_nsec) / 1e3;
-    }
-
     void _taskLoop()
     {
         while (_running.load())
         {
             sem_wait(&_sem);
-            if (!_running.load())
-	    {
-		break;
-	    }
-	    
-        // Retrieve the release time
-   	struct timespec releaseTime;
-        {
-            std::lock_guard<std::mutex> lock(_timestampMutex);
-            if (!_releaseTimes.empty()) {
-                releaseTime = _releaseTimes.front();
-                _releaseTimes.pop();
-            } else {
-                // If for some reason the queue is empty, fallback
-                clock_gettime(CLOCK_REALTIME, &releaseTime);
-            }
+            if (_running.load())
+                _doService();
         }
-        
-        // Record start time immediately after wakeup
-        struct timespec startTime;
-        clock_gettime(CLOCK_REALTIME, &startTime);
-        
-        // Calculate start time jitter
-        double startJitter = diffTimeUs(releaseTime, startTime);
-        _minStartJitter = std::min(_minStartJitter, startJitter);
-        _maxStartJitter = std::max(_maxStartJitter, startJitter);
-        _totalStartJitter += startJitter;
-        _startJitterCount++;
-		
-         _doService();
-        
-	 struct timespec endTime;
-        clock_gettime(CLOCK_REALTIME, &endTime);
-        
-        // Calculate execution time
-        double execTime = diffTimeUs(startTime, endTime);
-        _minExecTime = std::min(_minExecTime, execTime);
-        _maxExecTime = std::max(_maxExecTime, execTime);
-        _totalExecTime += execTime;
-        _execTimeCount++;
-		
-	}
     }
     
     void _initializeService()
@@ -197,10 +113,6 @@ private:
         // todo: call _doService() on releases (sem acquire) while the atomic running variable is true
         _taskLoop();
     }
-
-
-     
- 
 };
  
 // The sequencer class contains the services set and manages
@@ -238,10 +150,10 @@ public:
 
         struct itimerspec its{};
         its.it_value.tv_sec = 0;
-        its.it_value.tv_nsec = 10 * 1000000;        // 10 ms
+        its.it_value.tv_nsec = 5 * 1000000;        // 5 ms
         its.it_interval.tv_sec = 0;
-        its.it_interval.tv_nsec = 10 * 1000000;     // 10 ms
-
+        its.it_interval.tv_nsec = 5 * 1000000;     // 5 ms
+        
         timer_settime(_timerId, 0, &its, nullptr);
     }
 
@@ -252,10 +164,6 @@ public:
         for (auto& service : _services)
             service->stop();
             //service.stop();
-
-        for (auto& service : _services)
-            service->printStatistics();
-
     }
 
 private:
@@ -269,7 +177,7 @@ private:
     {
 
         static int tick = 0;
-        tick += 10;
+        tick += 5;
 
         if (!_instance) return;
 
@@ -280,11 +188,10 @@ private:
             {
                 //sem_post(&service.getSemaphore());
                 sem_post(&service->getSemaphore());
-                std::cout << "[Sequencer] Task Started at: " << tick << " ms (Period: "
-                          << service->getPeriod() << " ms)\n";
+                syslog(LOG_INFO, "Sequencer: Service with period: %d ms (Period: %u ms) Started", tick, service->getPeriod());
             }
         }
 
-        if (tick >= 5000) tick = 0; // Reset after 1s
+        //if (tick >= 5000) tick = 0; // Reset after 1s
     }
 };
