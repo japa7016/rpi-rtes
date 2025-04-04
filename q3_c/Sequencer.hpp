@@ -191,10 +191,10 @@ private:
             {
                 //sem_post(&service.getSemaphore());
                 sem_post(&service->getSemaphore());
-                syslog(LOG_INFO, "Sequencer: Service with period: %d ms (Period: %u ms) Started", tick, service->getPeriod());
+                syslog(LOG_INFO, "Sequencer: Service with period:  %u ms tarted", service->getPeriod());
             }
         }
 
-        //if (tick >= 5000) tick = 0; // Reset after 1s
+        if (tick >= 100) tick = 0; // Reset after 1s
     }
 };
