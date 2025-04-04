@@ -122,7 +122,7 @@ int main()
     // todo: wait for ctrl-c or some other terminating condition
      std::this_thread::sleep_for(std::chrono::seconds(1));  // run for 5 seconds
     sequencer.stopServices();
-    std::this_thread::sleep_for(std::chrono::seconds(1));  // run for 5 seconds
+    //std::this_thread::sleep_for(std::chrono::seconds(1));  // run for 5 seconds
     syslog(LOG_INFO, "Stopped sequencer and services.");
     closelog();
     
