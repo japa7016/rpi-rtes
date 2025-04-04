@@ -125,18 +125,22 @@ private:
 
 
 
-            struct timespec releaseTime;
+            struct timespec releaseTime, startTime, endTime;
             {
                 std::lock_guard<std::mutex> lock(_releaseMutex);
                 if (!_releaseTimes.empty()) 
                 {
                     releaseTime = _releaseTimes.front();
                     _releaseTimes.pop();
-                } 
+                }
+         	else
+            	{
+               
+                	releaseTime = startTime;
+            	} 
             }
 
-	    struct timespec startTime, endTime;
-            clock_gettime(CLOCK_MONOTONIC, &startTime);
+	 clock_gettime(CLOCK_MONOTONIC, &startTime);
 
             double jitter = diffTimeUs(releaseTime, startTime);
             _minJitter = std::min(_minJitter, jitter);
