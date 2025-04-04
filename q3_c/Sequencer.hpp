@@ -5,6 +5,9 @@
  *
  * Build with g++ --std=c++23 -Wall -Werror -pedantic
  * Steve Rizor 3/16/2025
+ * #References used in this code:
+ * This code combines parts of model code from Exercises 1 to 4,
+ * along with help from LLM-based tools for C++ syntax and structure.
  */
 
 #pragma once
