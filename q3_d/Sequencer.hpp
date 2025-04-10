@@ -103,9 +103,9 @@ private:
     
     std::queue<struct timespec> _releaseTimes;
     std::mutex _releaseMutex;  
-    double _minJitter, _maxJitter, _totalJitter;
+    double _minJitter = 0, _maxJitter = 0, _totalJitter = 0;
     size_t _jitterCount = 0;
-    double _minExecTime, _maxExecTime, _totalExecTime;
+    double _minExecTime = 0, _maxExecTime = 0, _totalExecTime = 0;
     size_t _execCount = 0;
 
     static inline double diffTimeUs(const struct timespec &start, const struct timespec &end) 
