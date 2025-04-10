@@ -73,8 +73,9 @@ public:
         struct timespec releaseTime;
         clock_gettime(CLOCK_MONOTONIC, &releaseTime);
         {
-            std::lock_guard<std::mutex> lock(_releaseMutex);
-            _releaseTimes.push(releaseTime);
+            std::lock_guard<std::mutex> lock(_releaseMutex); 
+
+	   _releaseTimes.push(releaseTime);
         }
 	sem_post(&_sem);
     }
@@ -125,20 +126,23 @@ private:
 
 
 
-            struct timespec releaseTime, startTime, endTime;
+        struct timespec releaseTime, startTime, endTime;
+        {
+            std::lock_guard<std::mutex> lock(_releaseMutex);
+            if (!_releaseTimes.empty())
             {
-                std::lock_guard<std::mutex> lock(_releaseMutex);
-                if (!_releaseTimes.empty()) 
+                while (_releaseTimes.size() > 1)
                 {
-                    releaseTime = _releaseTimes.front();
                     _releaseTimes.pop();
                 }
-         	else
-            	{
-               
-                	releaseTime = startTime;
-            	} 
+                releaseTime = _releaseTimes.front();
+                _releaseTimes.pop();
             }
+            else
+            {
+                clock_gettime(CLOCK_MONOTONIC, &releaseTime);
+            }
+        }
 
 	 clock_gettime(CLOCK_MONOTONIC, &startTime);
 
