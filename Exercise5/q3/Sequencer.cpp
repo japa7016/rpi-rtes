@@ -161,22 +161,10 @@ void toggleGPIO3(void)
     clock_gettime(CLOCK_REALTIME, &start_time);
     syslog(LOG_INFO, "GPIO Toggling3 started execution at %ld.%09ld seconds", start_time.tv_sec, start_time.tv_nsec);
     
-    int fd = open("/dev/gpiochip0", O_RDWR);
-    if (fd < 0) 
-    {
-        syslog(LOG_ERR, "Failed to open /dev/gpiochip0: %s", strerror(errno));
-        return;
-    }
-    struct gpiohandle_request rq;
-    struct gpiohandle_data data;
-    rq.lineoffsets[0] = 5;
-    rq.flags = GPIOHANDLE_REQUEST_OUTPUT;
-    rq.lines = 1;
-    strcpy(rq.consumer_label, "gpio_toggle5");
-    if (ioctl(fd, GPIO_GET_LINEHANDLE_IOCTL, &rq) == -1) 
+    if (ioctl(ioctlfd, GPIO_GET_LINEHANDLE_IOCTL, &rq) == -1) 
     {
         syslog(LOG_ERR, "GPIO_GET_LINEHANDLE_IOCTL failed: %s", strerror(errno));
-        close(fd);
+        close(ioctlfd);
         return;
     }
     static bool isLow = true;
@@ -186,11 +174,10 @@ void toggleGPIO3(void)
     {
         syslog(LOG_ERR, "GPIOHANDLE_SET_LINE_VALUES_IOCTL failed: %s", strerror(errno));
         close(rq.fd);
-        close(fd);
+        close(ioctlfd);
         return;
     }
     close(rq.fd);
-    close(fd);
 
     clock_gettime(CLOCK_REALTIME, &end_time);
     delta_t(&end_time, &start_time, &delta);
@@ -205,32 +192,7 @@ void toggleGPIO4(void)
 
     clock_gettime(CLOCK_REALTIME, &start_time);
     syslog(LOG_INFO, "GPIO Toggling4 started execution at %ld.%09ld seconds", start_time.tv_sec, start_time.tv_nsec);
-
-    int mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if(mem_fd < 0)
-    {
-        syslog(LOG_ERR, "Failed to open /dev/mem: %s", strerror(errno));
-        return;
-    }
-    const off_t gpio_base = 0xFE200000;
-    const size_t block_size = 4096;
-    void *gpio_map = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, gpio_base);
-    if(gpio_map == MAP_FAILED)
-    {
-        syslog(LOG_ERR, "mmap failed: %s", strerror(errno));
-        close(mem_fd);
-        return;
-    }
-    volatile unsigned int *gpio = (volatile unsigned int *)gpio_map;
-    int gpioPin = 7;
-    int fsel_reg = gpioPin / 10;
-    int shift = (gpioPin % 10) * 3;
-    unsigned int reg_val = gpio[fsel_reg];
-    reg_val &= ~(7 << shift);
-    reg_val |= (1 << shift);
-    gpio[fsel_reg] = reg_val;
-
-    static bool isLow = true;
+	
     if(isLow)
     {
         gpio[7] = (1 << gpioPin);
@@ -242,8 +204,7 @@ void toggleGPIO4(void)
         isLow = true;
     }
     munmap((void *)gpio_map, block_size);
-    close(mem_fd);
-
+    
     clock_gettime(CLOCK_REALTIME, &end_time);
     delta_t(&end_time, &start_time, &delta);
 
@@ -275,9 +236,50 @@ int main(int argc, char *argv[])
 	     sequencer.addService(toggleGPIO2, 1, 99, 100);
 	     break;
 	 case 3:
+	     static int flagioctl = 0;
+	     static int ioctlfd = open("/dev/gpiochip0", O_RDWR);
+	     if (ioctlfd < 0) 
+	     {
+		 syslog(LOG_ERR, "Failed to open /dev/gpiochip0: %s", strerror(errno));
+		 return;
+	     }
+             flagioctl = 1;
+	     static struct gpiohandle_request rq;
+	     static struct gpiohandle_data data;
+	     rq.lineoffsets[0] = 5;
+	     rq.flags = GPIOHANDLE_REQUEST_OUTPUT;
+	     rq.lines = 1;
+	     strcpy(rq.consumer_label, "gpio_toggle5");
 	     sequencer.addService(toggleGPIO3, 1, 99, 100);
 	     break;
 	 case 4:
+             static int flagmmap = 0;
+	     static int mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
+	    if(mem_fd < 0)
+	    {
+	        syslog(LOG_ERR, "Failed to open /dev/mem: %s", strerror(errno));
+	        return;
+	    }
+	    const off_t gpio_base = 0xFE200000;
+	    const size_t block_size = 4096;
+	    void *gpio_map = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, gpio_base);
+	    if(gpio_map == MAP_FAILED)
+	    {
+	        syslog(LOG_ERR, "mmap failed: %s", strerror(errno));
+	        close(mem_fd);
+	        return;
+	    }
+            flagmmap = 1;
+	    volatile unsigned int *gpio = (volatile unsigned int *)gpio_map;
+	    int gpioPin = 7;
+	    int fsel_reg = gpioPin / 10;
+	    int shift = (gpioPin % 10) * 3;
+	    unsigned int reg_val = gpio[fsel_reg];
+	    reg_val &= ~(7 << shift);
+	    reg_val |= (1 << shift);
+	    gpio[fsel_reg] = reg_val;
+	
+	    static bool isLow = true;
 	     sequencer.addService(toggleGPIO4, 1, 99, 100);
              break;
          default:
@@ -292,6 +294,14 @@ int main(int argc, char *argv[])
     sequencer.stopServices();
     //std::this_thread::sleep_for(std::chrono::seconds(1));  // run for 5 seconds
     syslog(LOG_INFO, "Stopped sequencer and services.");
+    if(flagioctl)
+    {
+        close(ioctlfd);
+    }
+    if(flagmmap)
+    {
+	close(mem_fd);
+    }
     closelog();
     
     return 0;
